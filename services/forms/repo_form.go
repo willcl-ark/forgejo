@@ -70,19 +70,21 @@ type MigrateRepoForm struct {
 	// required: true
 	UID int64 `json:"uid" binding:"Required"`
 	// required: true
-	RepoName       string `json:"repo_name" binding:"Required;AlphaDashDot;MaxSize(100)"`
-	Mirror         bool   `json:"mirror"`
-	LFS            bool   `json:"lfs"`
-	LFSEndpoint    string `json:"lfs_endpoint"`
-	Private        bool   `json:"private"`
-	Description    string `json:"description" binding:"MaxSize(2048)"`
-	Wiki           bool   `json:"wiki"`
-	Milestones     bool   `json:"milestones"`
-	Labels         bool   `json:"labels"`
-	Issues         bool   `json:"issues"`
-	PullRequests   bool   `json:"pull_requests"`
-	Releases       bool   `json:"releases"`
-	MirrorInterval string `json:"mirror_interval"`
+	RepoName         string `json:"repo_name" binding:"Required;AlphaDashDot;MaxSize(100)"`
+	Mirror           bool   `json:"mirror"`
+	LFS              bool   `json:"lfs"`
+	LFSEndpoint      string `json:"lfs_endpoint"`
+	Private          bool   `json:"private"`
+	Description      string `json:"description" binding:"MaxSize(2048)"`
+	Wiki             bool   `json:"wiki"`
+	Milestones       bool   `json:"milestones"`
+	Labels           bool   `json:"labels"`
+	Issues           bool   `json:"issues"`
+	PullRequests     bool   `json:"pull_requests"`
+	Releases         bool   `json:"releases"`
+	MirrorInterval   string `json:"mirror_interval"`
+	MetadataPath     string `json:"metadata_path"`
+	MetadataInterval string `json:"metadata_interval"`
 }
 
 // Validate validates the fields

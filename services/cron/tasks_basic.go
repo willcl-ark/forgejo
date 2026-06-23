@@ -14,6 +14,7 @@ import (
 	"forgejo.org/modules/git"
 	"forgejo.org/modules/setting"
 	"forgejo.org/services/auth"
+	"forgejo.org/services/githubmetadata"
 	"forgejo.org/services/migrations"
 	mirror_service "forgejo.org/services/mirror"
 	packages_cleanup_service "forgejo.org/services/packages/cleanup"
@@ -39,6 +40,25 @@ func registerUpdateMirrorTask() {
 	}, func(ctx context.Context, _ *user_model.User, cfg Config) error {
 		umtc := cfg.(*UpdateMirrorTaskConfig)
 		return mirror_service.Update(ctx, umtc.PullLimit, umtc.PushLimit)
+	})
+}
+
+func registerUpdateGitHubMetadataMirrorTask() {
+	type UpdateGitHubMetadataMirrorTaskConfig struct {
+		BaseConfig
+		Limit int
+	}
+
+	RegisterTaskFatal("update_github_metadata_mirrors", &UpdateGitHubMetadataMirrorTaskConfig{
+		BaseConfig: BaseConfig{
+			Enabled:    true,
+			RunAtStart: false,
+			Schedule:   "@every 30m",
+		},
+		Limit: 50,
+	}, func(ctx context.Context, _ *user_model.User, cfg Config) error {
+		umtc := cfg.(*UpdateGitHubMetadataMirrorTaskConfig)
+		return githubmetadata.Update(ctx, umtc.Limit)
 	})
 }
 
@@ -159,6 +179,7 @@ func registerCleanupPackages() {
 func initBasicTasks() {
 	if setting.Mirror.Enabled {
 		registerUpdateMirrorTask()
+		registerUpdateGitHubMetadataMirrorTask()
 	}
 	registerRepoHealthCheck()
 	registerCheckRepoStats()

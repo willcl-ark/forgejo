@@ -24,6 +24,7 @@ import (
 	"forgejo.org/modules/web"
 	"forgejo.org/services/context"
 	"forgejo.org/services/forms"
+	"forgejo.org/services/githubmetadata"
 	"forgejo.org/services/migrations"
 	"forgejo.org/services/task"
 )
@@ -182,6 +183,11 @@ func MigratePost(ctx *context.Context) {
 		return
 	}
 
+	if form.Service == structs.GithubMetadataService {
+		handleGitHubMetadataMigratePost(ctx, ctxUser, form, tpl)
+		return
+	}
+
 	remoteAddr, err := forms.ParseRemoteAddr(form.CloneAddr, form.AuthUsername, form.AuthPassword)
 	if err == nil {
 		err = migrations.IsMigrateURLAllowed(remoteAddr, ctx.Doer)
@@ -260,10 +266,87 @@ func setMigrationContextData(ctx *context.Context, serviceType structs.GitServic
 	ctx.Data["LFSActive"] = setting.LFS.StartServer
 	ctx.Data["IsForcedPrivate"] = setting.Repository.ForcePrivate
 	ctx.Data["DisableNewPullMirrors"] = setting.Mirror.DisableNewPull
+	ctx.Data["DefaultMirrorInterval"] = setting.Mirror.DefaultInterval
+	ctx.Data["MinimumMirrorInterval"] = setting.Mirror.MinInterval
+	ctx.Data["DefaultMetadataInterval"] = githubmetadata.DefaultInterval()
 
 	// Plain git should be first
-	ctx.Data["Services"] = append([]structs.GitServiceType{structs.PlainGitService}, structs.SupportedFullGitService...)
+	ctx.Data["Services"] = append([]structs.GitServiceType{structs.PlainGitService, structs.GithubMetadataService}, structs.SupportedFullGitService...)
 	ctx.Data["service"] = serviceType
+}
+
+func handleGitHubMetadataMigratePost(ctx *context.Context, ctxUser *user_model.User, form *forms.MigrateRepoForm, tpl base.TplName) {
+	if setting.Mirror.DisableNewPull {
+		ctx.Error(http.StatusBadRequest, "GitHubMetadataMigratePost: the site administrator has disabled creation of new mirrors")
+		return
+	}
+
+	remoteAddr, err := forms.ParseRemoteAddr(form.CloneAddr, form.AuthUsername, form.AuthPassword)
+	if err == nil {
+		err = migrations.IsMigrateURLAllowed(remoteAddr, ctx.Doer)
+	}
+	if err != nil {
+		ctx.Data["Err_CloneAddr"] = true
+		handleMigrateRemoteAddrError(ctx, err, tpl, form)
+		return
+	}
+
+	metadataSource, err := forms.ParseRemoteAddr(form.MetadataPath, "", "")
+	if err == nil {
+		err = migrations.IsMigrateURLAllowed(metadataSource, ctx.Doer)
+	}
+	if err != nil {
+		ctx.Data["Err_MetadataPath"] = true
+		handleMigrateRemoteAddrError(ctx, err, tpl, form)
+		return
+	}
+	if err := githubmetadata.ValidateMetadataSource(metadataSource); err != nil {
+		ctx.Data["Err_MetadataPath"] = true
+		ctx.RenderWithErr(err.Error(), tpl, form)
+		return
+	}
+
+	opts := migrations.MigrateOptions{
+		OriginalURL:    form.CloneAddr,
+		GitServiceType: form.Service,
+		CloneAddr:      remoteAddr,
+		RepoName:       form.RepoName,
+		Description:    form.Description,
+		Private:        form.Private || setting.Repository.ForcePrivate,
+		Mirror:         true,
+		LFS:            form.LFS && setting.LFS.StartServer,
+		LFSEndpoint:    form.LFSEndpoint,
+		AuthUsername:   form.AuthUsername,
+		AuthPassword:   form.AuthPassword,
+		MirrorInterval: form.MirrorInterval,
+	}
+
+	if opts.LFS && len(form.LFSEndpoint) > 0 {
+		ep := lfs.DetermineEndpoint("", form.LFSEndpoint)
+		if ep == nil {
+			ctx.Data["Err_LFSEndpoint"] = true
+			ctx.RenderWithErr(ctx.Tr("repo.migrate.invalid_lfs_endpoint"), tpl, form)
+			return
+		}
+		err = migrations.IsMigrateURLAllowed(ep.String(), ctx.Doer)
+		if err != nil {
+			ctx.Data["Err_LFSEndpoint"] = true
+			handleMigrateRemoteAddrError(ctx, err, tpl, form)
+			return
+		}
+	}
+
+	err = repo_model.CheckCreateRepository(ctx, ctx.Doer, ctxUser, opts.RepoName)
+	if err != nil {
+		handleMigrateError(ctx, ctxUser, err, "GitHubMetadataMigratePost", tpl, form)
+		return
+	}
+
+	if err = task.MigrateGitHubMetadataRepository(ctx, ctx.Doer, ctxUser, opts, metadataSource, form.MetadataInterval); err == nil {
+		ctx.Redirect(ctxUser.HomeLink() + "/" + url.PathEscape(opts.RepoName))
+		return
+	}
+	handleMigrateError(ctx, ctxUser, err, "GitHubMetadataMigratePost", tpl, form)
 }
 
 func MigrateRetryPost(ctx *context.Context) {

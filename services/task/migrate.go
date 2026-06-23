@@ -22,6 +22,7 @@ import (
 	"forgejo.org/modules/structs"
 	"forgejo.org/modules/timeutil"
 	"forgejo.org/modules/util"
+	"forgejo.org/services/githubmetadata"
 	"forgejo.org/services/migrations"
 	notify_service "forgejo.org/services/notify"
 )
@@ -130,6 +131,9 @@ func runMigrateTask(ctx context.Context, t *admin_model.Task) (err error) {
 		t.Message = string(bs)
 		_ = t.UpdateCols(ctx, "message")
 	})
+	if err == nil {
+		err = githubmetadata.SyncAfterMigration(ctx, t.Repo)
+	}
 
 	if err == nil {
 		log.Trace("Repository migrated [%d]: %s/%s", t.Repo.ID, t.Owner.Name, t.Repo.Name)

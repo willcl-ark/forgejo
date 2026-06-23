@@ -322,22 +322,26 @@ type GitServiceType int
 
 // enumerate all GitServiceType
 const (
-	NotMigrated      GitServiceType = iota // 0 not migrated from external sites
-	PlainGitService                        // 1 plain git service
-	GithubService                          // 2 github.com
-	GiteaService                           // 3 gitea service
-	GitlabService                          // 4 gitlab service
-	GogsService                            // 5 gogs service
-	OneDevService                          // 6 onedev service
-	GitBucketService                       // 7 gitbucket service
-	CodebaseService                        // 8 codebase service
-	ForgejoService                         // 9 forgejo service
-	PagureService                          // 10 pagure service
+	NotMigrated           GitServiceType = iota // 0 not migrated from external sites
+	PlainGitService                             // 1 plain git service
+	GithubService                               // 2 github.com
+	GiteaService                                // 3 gitea service
+	GitlabService                               // 4 gitlab service
+	GogsService                                 // 5 gogs service
+	OneDevService                               // 6 onedev service
+	GitBucketService                            // 7 gitbucket service
+	CodebaseService                             // 8 codebase service
+	ForgejoService                              // 9 forgejo service
+	PagureService                               // 10 pagure service
+	GithubMetadataService                       // 11 GitHub metadata backup service
 )
 
 // Name represents the service type's name
 // WARNING: the name have to be equal to that on goth's library
 func (gt GitServiceType) Name() string {
+	if gt == GithubMetadataService {
+		return "github_metadata"
+	}
 	return strings.ToLower(gt.Title())
 }
 
@@ -362,6 +366,8 @@ func (gt GitServiceType) Title() string {
 		return "Forgejo"
 	case PagureService:
 		return "Pagure"
+	case GithubMetadataService:
+		return "GitHub Metadata Mirror"
 	case PlainGitService:
 		return "Git"
 	}

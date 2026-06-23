@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"time"
 
 	admin_model "forgejo.org/models/admin"
 	"forgejo.org/models/db"
@@ -23,6 +24,7 @@ import (
 	"forgejo.org/modules/structs"
 	"forgejo.org/modules/timeutil"
 	"forgejo.org/modules/util"
+	"forgejo.org/services/githubmetadata"
 	repo_service "forgejo.org/services/repository"
 )
 
@@ -62,6 +64,34 @@ func handler(items ...*admin_model.Task) []*admin_model.Task {
 func MigrateRepository(ctx context.Context, doer, u *user_model.User, opts base.MigrateOptions) error {
 	task, err := CreateMigrateTask(ctx, doer, u, opts)
 	if err != nil {
+		return err
+	}
+
+	return taskQueue.Push(task)
+}
+
+// MigrateGitHubMetadataRepository adds a git pull mirror migration with metadata backup import to the task queue.
+func MigrateGitHubMetadataRepository(ctx context.Context, doer, u *user_model.User, opts base.MigrateOptions, metadataSource string, metadataInterval string) error {
+	if err := githubmetadata.ValidateMetadataSource(metadataSource); err != nil {
+		return err
+	}
+	interval := githubmetadata.DefaultInterval()
+	if metadataInterval != "" {
+		parsedInterval, err := time.ParseDuration(metadataInterval)
+		if err != nil {
+			return err
+		}
+		if parsedInterval < 0 {
+			return fmt.Errorf("metadata interval must not be negative")
+		}
+		interval = parsedInterval
+	}
+
+	task, err := CreateMigrateTask(ctx, doer, u, opts)
+	if err != nil {
+		return err
+	}
+	if err := githubmetadata.CreateMirror(ctx, task.RepoID, metadataSource, interval); err != nil {
 		return err
 	}
 
