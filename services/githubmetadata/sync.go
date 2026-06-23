@@ -639,7 +639,7 @@ func (imp *importer) upsertPull(ctx context.Context, source githubPull) (*issues
 
 	pr = &issues_model.PullRequest{
 		Type:           issues_model.PullRequestGitea,
-		Status:         issues_model.PullRequestStatusChecking,
+		Status:         metadataPullStatus(source),
 		Index:          source.Number,
 		HeadRepoID:     imp.repo.ID,
 		HeadBranch:     sanitizeBranch(source.Head.Ref),
@@ -695,6 +695,7 @@ func (imp *importer) updatePull(ctx context.Context, pr *issues_model.PullReques
 	pr.HasMerged = source.Merged
 	pr.MergedCommitID = source.MergeCommitSHA
 	pr.Flow = issues_model.PullRequestFlowAGit
+	pr.Status = metadataPullStatus(source)
 	pr.MergedUnix = 0
 	pr.MergerID = 0
 	if source.Merged && source.MergedAt != nil {
@@ -702,7 +703,7 @@ func (imp *importer) updatePull(ctx context.Context, pr *issues_model.PullReques
 		pr.MergerID = user_model.GhostUserID
 	}
 	if _, err := db.GetEngine(ctx).ID(pr.ID).NoAutoTime().
-		Cols("head_branch", "base_branch", "type", "merge_base", "has_merged", "merged_commit_id", "flow", "merged_unix", "merger_id").
+		Cols("head_branch", "base_branch", "type", "merge_base", "has_merged", "merged_commit_id", "flow", "status", "merged_unix", "merger_id").
 		Update(pr); err != nil {
 		return err
 	}
@@ -710,6 +711,13 @@ func (imp *importer) updatePull(ctx context.Context, pr *issues_model.PullReques
 		log.Warn("Unable to update pull ref for %s#%d: %v", imp.repo.FullName(), source.Number, err)
 	}
 	return nil
+}
+
+func metadataPullStatus(source githubPull) issues_model.PullRequestStatus {
+	if source.Merged {
+		return issues_model.PullRequestStatusManuallyMerged
+	}
+	return issues_model.PullRequestStatusError
 }
 
 func (imp *importer) ensureLabels(ctx context.Context, labels []githubLabel) ([]*issues_model.Label, error) {

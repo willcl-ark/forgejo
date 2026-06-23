@@ -43,6 +43,9 @@ var (
 
 // AddToTaskQueue adds itself to pull request test task queue.
 func AddToTaskQueue(ctx context.Context, pr *issues_model.PullRequest) {
+	if skipMetadataMirrorPatchCheck(ctx, pr) {
+		return
+	}
 	pr.Status = issues_model.PullRequestStatusChecking
 	err := pr.UpdateColsIfNotMerged(ctx, "status")
 	if err != nil {
@@ -314,6 +317,10 @@ func testPRProtected(ctx context.Context, id int64) (*issues_model.PullRequest, 
 		log.Trace("Done testing %-v (status: %s)", pr, pr.Status)
 	}()
 
+	if skipMetadataMirrorPatchCheck(ctx, pr) {
+		return nil, false
+	}
+
 	if pr.HasMerged {
 		log.Trace("%-v is already merged (status: %s, merge commit: %s)", pr, pr.Status, pr.MergedCommitID)
 		return nil, false
@@ -334,6 +341,29 @@ func testPRProtected(ctx context.Context, id int64) (*issues_model.PullRequest, 
 	}
 
 	return pr, checkAndUpdateStatus(ctx, pr)
+}
+
+func skipMetadataMirrorPatchCheck(ctx context.Context, pr *issues_model.PullRequest) bool {
+	isMetadataMirror, err := repo_model.IsGitHubMetadataMirror(ctx, pr.BaseRepoID)
+	if err != nil {
+		log.Error("IsGitHubMetadataMirror[%d]: %v", pr.BaseRepoID, err)
+		return false
+	}
+	if !isMetadataMirror {
+		return false
+	}
+	if pr.Status == issues_model.PullRequestStatusChecking {
+		if pr.HasMerged {
+			pr.Status = issues_model.PullRequestStatusManuallyMerged
+		} else {
+			pr.Status = issues_model.PullRequestStatusError
+		}
+		if err := pr.UpdateColsIfNotMerged(ctx, "status"); err != nil {
+			log.Error("skipMetadataMirrorPatchCheck(%-v).UpdateCols: %v", pr, err)
+		}
+	}
+	log.Trace("Skipping patch check for metadata mirror pull request %-v", pr)
+	return true
 }
 
 // CheckPRsForBaseBranch check all pulls with baseBrannch
