@@ -109,7 +109,7 @@ func getIssueBadge(ctx *app_context.Context, variant string, num int) {
 }
 
 func getPullBadge(ctx *app_context.Context, variant string, num int) {
-	if !ctx.Repo.Repository.CanEnablePulls() || !ctx.Repo.CanRead(unit.TypePullRequests) {
+	if !ctx.Repo.CanReadPulls() {
 		errorBadge(ctx, "pulls", "Not found")
 		return
 	}

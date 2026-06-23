@@ -158,7 +158,7 @@
 	</div>
 
 	{{if .IsNothingToCompare}}
-		{{if and $.IsSigned $.AllowEmptyPr (not .Repository.IsArchived) .PageIsComparePull}}
+		{{if and $.IsSigned $.AllowEmptyPr (not .Repository.IsArchived) .PageIsComparePull (not .IsGitHubMetadataMirror)}}
 			<div class="ui segment">{{ctx.Locale.Tr "repo.pulls.nothing_to_compare_and_allow_empty_pr"}}</div>
 			<div class="ui info message show-form-container {{if .Flash}}tw-hidden{{end}}">
 				<button class="ui button primary show-form">{{ctx.Locale.Tr "repo.pulls.new"}}</button>
@@ -192,7 +192,7 @@
 				</div>
 			</div>
 		{{else}}
-			{{if and $.IsSigned (not .Repository.IsArchived)}}
+			{{if and $.IsSigned (not .Repository.IsArchived) (not .IsGitHubMetadataMirror)}}
 				<div class="ui info message show-form-container {{if .Flash}}tw-hidden{{end}}">
 					<button class="ui button primary show-form">{{ctx.Locale.Tr "repo.pulls.new"}}</button>
 				</div>
@@ -209,7 +209,7 @@
 					{{ctx.Locale.Tr "repo.pulls.sign_in_require" .SignInLink}}
 				</div>
 			{{end}}
-			{{if $.IsSigned}}
+			{{if and $.IsSigned (not .IsGitHubMetadataMirror)}}
 				<div class="pullrequest-form {{if not .Flash}}tw-hidden{{end}}">
 					{{template "repo/issue/new_form" .}}
 				</div>

@@ -1367,9 +1367,9 @@ func registerRoutes(m *web.Route) {
 		}
 		m.Group("/issues", func() {
 			m.Group("/new", func() {
-				m.Combo("", context.EnsureOrg()).Get(context.RepoRef(), repo.NewIssue).
+				m.Combo("", context.EnsureOrg()).Get(context.RequireMutableIssuesOrPulls(), context.RepoRef(), repo.NewIssue).
 					Post(context.RequireMutableIssuesOrPulls(), web.Bind(forms.CreateIssueForm{}), repo.NewIssuePost)
-				m.Get("/choose", context.RepoRef(), repo.NewIssueChooseTemplate)
+				m.Get("/choose", context.RequireMutableIssuesOrPulls(), context.RepoRef(), repo.NewIssueChooseTemplate)
 			})
 			m.Get("/search", repo.ListIssues)
 		}, context.RepoMustNotBeArchived(), reqRepoIssueReader)

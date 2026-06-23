@@ -130,7 +130,7 @@ func MustEnableIssues(ctx *context.Context) {
 
 // MustAllowPulls check if repository enable pull requests and user have right to do that
 func MustAllowPulls(ctx *context.Context) {
-	if !ctx.Repo.Repository.CanEnablePulls() || !ctx.Repo.CanRead(unit.TypePullRequests) {
+	if !ctx.Repo.CanReadPulls() {
 		ctx.NotFound("MustAllowPulls", nil)
 		return
 	}
@@ -2252,7 +2252,7 @@ func GetIssueInfo(ctx *context.Context) {
 
 	if issue.IsPull {
 		// Need to check if Pulls are enabled and we can read Pulls
-		if !ctx.Repo.Repository.CanEnablePulls() || !ctx.Repo.CanRead(unit.TypePullRequests) {
+		if !ctx.Repo.CanReadPulls() {
 			ctx.Error(http.StatusNotFound)
 			return
 		}

@@ -88,6 +88,13 @@ func (r *Repository) CanWrite(unitType unit_model.Type) bool {
 	return r.Permission.CanWrite(unitType)
 }
 
+// CanReadPulls returns true when pull requests can be displayed.
+func (r *Repository) CanReadPulls() bool {
+	return r.Repository != nil &&
+		(r.Repository.CanEnablePulls() || (r.IsGitHubMetadataMirror && !r.Repository.IsEmpty)) &&
+		r.Permission.CanRead(unit_model.TypePullRequests)
+}
+
 // CanWriteIssuesOrPulls returns true if user can write to issues or pull requests.
 func (r *Repository) CanWriteIssuesOrPulls(isPull bool) bool {
 	if r.IsGitHubMetadataMirror {
@@ -473,6 +480,7 @@ func repoAssignment(ctx *Context, repo *repo_model.Repository) {
 	ctx.Repo.Repository = repo
 	ctx.Data["RepoName"] = ctx.Repo.Repository.Name
 	ctx.Data["IsEmptyRepo"] = ctx.Repo.Repository.IsEmpty
+	ctx.Data["CanReadPulls"] = ctx.Repo.CanReadPulls()
 	ctx.Data["DefaultWikiBranchName"] = setting.Repository.DefaultBranch
 }
 
@@ -647,6 +655,7 @@ func RepoAssignment(ctx *Context) context.CancelFunc {
 	ctx.Data["CanWriteCode"] = ctx.Repo.CanWrite(unit_model.TypeCode)
 	ctx.Data["CanWriteIssues"] = ctx.Repo.CanWrite(unit_model.TypeIssues)
 	ctx.Data["CanWritePulls"] = ctx.Repo.CanWrite(unit_model.TypePullRequests)
+	ctx.Data["CanReadPulls"] = ctx.Repo.CanReadPulls()
 	ctx.Data["CanWriteActions"] = ctx.Repo.CanWrite(unit_model.TypeActions)
 	ctx.Data["IsModerationEnabled"] = setting.Moderation.Enabled
 
