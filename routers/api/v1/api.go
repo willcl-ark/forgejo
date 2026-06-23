@@ -177,6 +177,11 @@ func repoAssignment(ctx *context.APIContext) {
 
 	repo.Owner = owner
 	ctx.Repo.Repository = repo
+	ctx.Repo.IsGitHubMetadataMirror, err = repo_model.IsGitHubMetadataMirror(ctx, repo.ID)
+	if err != nil {
+		ctx.Error(http.StatusInternalServerError, "IsGitHubMetadataMirror", err)
+		return
+	}
 }
 
 func repoAccess() func(ctx *context.APIContext) {
@@ -325,6 +330,15 @@ func reqRepoWriter(unitTypes ...unit.Type) func(ctx *context.APIContext) {
 	apiv1_permissions_testhelpers.RecordSignature(apiv1_permissions.ReqRepoWriter, unitTypes)
 	return func(ctx *context.APIContext) {
 		apiv1_permissions.ReqRepoWriter(ctx, unitTypes)
+	}
+}
+
+func reqMutableIssuesOrPulls() func(ctx *context.APIContext) {
+	return func(ctx *context.APIContext) {
+		if ctx.Repo.IsGitHubMetadataMirror {
+			ctx.Error(http.StatusForbidden, "GitHubMetadataMirrorReadOnly", "GitHub metadata mirrors are read-only for issues and pulls")
+			return
+		}
 	}
 }
 
@@ -971,44 +985,44 @@ func Routes() *web.Route {
 				m.Get("/editorconfig/{filename}", context.ReferencesGitRepo(), context.RepoRefForAPI, reqRepoReader(unit.TypeCode), repo.GetEditorconfig)
 				m.Group("/pulls", func() {
 					m.Combo("").Get(repo.ListPullRequests).
-						Post(reqToken(), mustNotBeArchived(), bind(api.CreatePullRequestOption{}), repo.CreatePullRequest)
+						Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.CreatePullRequestOption{}), repo.CreatePullRequest)
 					m.Get("/pinned", repo.ListPinnedPullRequests)
 					m.Group("/{index}", func() {
 						m.Combo("").Get(repo.GetPullRequest).
-							Patch(reqToken(), bind(api.EditPullRequestOption{}), repo.EditPullRequest)
+							Patch(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditPullRequestOption{}), repo.EditPullRequest)
 						m.Get(".{diffType:diff|patch}", repo.DownloadPullDiffOrPatch)
-						m.Post("/update", reqToken(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.UpdatePullRequest)
+						m.Post("/update", reqToken(), reqMutableIssuesOrPulls(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.UpdatePullRequest)
 						m.Get("/commits", repo.GetPullRequestCommits)
 						m.Get("/files", repo.GetPullRequestFiles)
 						m.Combo("/merge").Get(repo.IsPullRequestMerged).
-							Post(reqToken(), mustNotBeArchived(), bind(forms.MergePullRequestForm{}), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.MergePullRequest).
-							Delete(reqToken(), mustNotBeArchived(), repo.CancelScheduledAutoMerge)
+							Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(forms.MergePullRequestForm{}), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.MergePullRequest).
+							Delete(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), repo.CancelScheduledAutoMerge)
 						m.Group("/reviews", func() {
 							m.Combo("").
 								Get(repo.ListPullReviews).
-								Post(reqToken(), bind(api.CreatePullReviewOptions{}), repo.CreatePullReview)
+								Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.CreatePullReviewOptions{}), repo.CreatePullReview)
 							m.Group("/{id}", func() {
 								m.Combo("").
 									Get(repo.GetPullReview).
-									Delete(reqToken(), repo.DeletePullReview).
-									Post(reqToken(), bind(api.SubmitPullReviewOptions{}), repo.SubmitPullReview)
+									Delete(reqToken(), reqMutableIssuesOrPulls(), repo.DeletePullReview).
+									Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.SubmitPullReviewOptions{}), repo.SubmitPullReview)
 								m.Group("/comments", func() {
 									m.Combo("").
 										Get(repo.GetPullReviewComments).
-										Post(reqToken(), bind(api.CreatePullReviewCommentOptions{}), repo.CreatePullReviewComment)
+										Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.CreatePullReviewCommentOptions{}), repo.CreatePullReviewComment)
 									m.Group("/{comment}", func() {
 										m.Combo("").
 											Get(repo.GetPullReviewComment).
-											Delete(reqToken(), repo.DeletePullReviewComment)
+											Delete(reqToken(), reqMutableIssuesOrPulls(), repo.DeletePullReviewComment)
 									}, commentAssignment("comment"), reqValidCommentID())
 								})
-								m.Post("/dismissals", reqToken(), bind(api.DismissPullReviewOptions{}), repo.DismissPullReview)
-								m.Post("/undismissals", reqToken(), repo.UnDismissPullReview)
+								m.Post("/dismissals", reqToken(), reqMutableIssuesOrPulls(), bind(api.DismissPullReviewOptions{}), repo.DismissPullReview)
+								m.Post("/undismissals", reqToken(), reqMutableIssuesOrPulls(), repo.UnDismissPullReview)
 							})
 						})
 						m.Combo("/requested_reviewers", reqToken()).
-							Delete(bind(api.PullReviewRequestOptions{}), repo.DeleteReviewRequests).
-							Post(bind(api.PullReviewRequestOptions{}), repo.CreateReviewRequests)
+							Delete(reqMutableIssuesOrPulls(), bind(api.PullReviewRequestOptions{}), repo.DeleteReviewRequests).
+							Post(reqMutableIssuesOrPulls(), bind(api.PullReviewRequestOptions{}), repo.CreateReviewRequests)
 					})
 					m.Get("/{base}/*", repo.GetPullRequestByBaseHead)
 				}, mustAllowPulls(), reqRepoReader(unit.TypeCode), context.ReferencesGitRepo())
@@ -1098,60 +1112,60 @@ func Routes() *web.Route {
 			m.Group("/{username}/{reponame}", func() {
 				m.Group("/issues", func() {
 					m.Combo("").Get(repo.ListIssues).
-						Post(reqToken(), mustNotBeArchived(), bind(api.CreateIssueOption{}), reqRepoReader(unit.TypeIssues), repo.CreateIssue)
+						Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.CreateIssueOption{}), reqRepoReader(unit.TypeIssues), repo.CreateIssue)
 					m.Get("/pinned", reqRepoReader(unit.TypeIssues), repo.ListPinnedIssues)
 					m.Group("/comments", func() {
 						m.Get("", repo.ListRepoIssueComments)
 						m.Group("/{id}", func() {
 							m.Combo("").
 								Get(repo.GetIssueComment).
-								Patch(mustNotBeArchived(), reqToken(), bind(api.EditIssueCommentOption{}), repo.EditIssueComment).
-								Delete(reqToken(), repo.DeleteIssueComment)
+								Patch(mustNotBeArchived(), reqToken(), reqMutableIssuesOrPulls(), bind(api.EditIssueCommentOption{}), repo.EditIssueComment).
+								Delete(reqToken(), reqMutableIssuesOrPulls(), repo.DeleteIssueComment)
 							m.Combo("/reactions").
 								Get(repo.GetIssueCommentReactions).
-								Post(reqToken(), bind(api.EditReactionOption{}), repo.PostIssueCommentReaction).
-								Delete(reqToken(), bind(api.EditReactionOption{}), repo.DeleteIssueCommentReaction)
+								Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditReactionOption{}), repo.PostIssueCommentReaction).
+								Delete(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditReactionOption{}), repo.DeleteIssueCommentReaction)
 							m.Group("/assets", func() {
 								m.Combo("").
 									Get(repo.ListIssueCommentAttachments).
-									Post(reqToken(), mustNotBeArchived(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.CreateIssueCommentAttachment)
+									Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.CreateIssueCommentAttachment)
 								m.Combo("/{attachment_id}").
 									Get(repo.GetIssueCommentAttachment).
-									Patch(reqToken(), mustNotBeArchived(), bind(api.EditAttachmentOptions{}), repo.EditIssueCommentAttachment).
-									Delete(reqToken(), mustNotBeArchived(), repo.DeleteIssueCommentAttachment)
+									Patch(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.EditAttachmentOptions{}), repo.EditIssueCommentAttachment).
+									Delete(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), repo.DeleteIssueCommentAttachment)
 							}, mustEnableAttachments())
 						}, commentAssignment(":id"), reqValidCommentID())
 					})
 					m.Group("/{index}", func() {
 						m.Combo("").Get(repo.GetIssue).
-							Patch(reqToken(), bind(api.EditIssueOption{}), repo.EditIssue).
-							Delete(reqToken(), reqAdmin(), context.ReferencesGitRepo(), repo.DeleteIssue)
+							Patch(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditIssueOption{}), repo.EditIssue).
+							Delete(reqToken(), reqMutableIssuesOrPulls(), reqAdmin(), context.ReferencesGitRepo(), repo.DeleteIssue)
 						m.Group("/comments", func() {
 							m.Combo("").Get(repo.ListIssueComments).
-								Post(reqToken(), mustNotBeArchived(), bind(api.CreateIssueCommentOption{}), repo.CreateIssueComment)
-							m.Combo("/{id}", reqToken(), commentAssignment(":id"), reqValidCommentID()).Patch(bind(api.EditIssueCommentOption{}), repo.EditIssueCommentDeprecated).
+								Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.CreateIssueCommentOption{}), repo.CreateIssueComment)
+							m.Combo("/{id}", reqToken(), reqMutableIssuesOrPulls(), commentAssignment(":id"), reqValidCommentID()).Patch(bind(api.EditIssueCommentOption{}), repo.EditIssueCommentDeprecated).
 								Delete(repo.DeleteIssueCommentDeprecated)
 						})
 						m.Get("/timeline", repo.ListIssueCommentsAndTimeline)
 						m.Group("/labels", func() {
 							m.Combo("").Get(repo.ListIssueLabels).
-								Post(reqToken(), bind(api.IssueLabelsOption{}), repo.AddIssueLabels).
-								Put(reqToken(), bind(api.IssueLabelsOption{}), repo.ReplaceIssueLabels).
-								Delete(reqToken(), bind(api.DeleteLabelsOption{}), repo.ClearIssueLabels)
-							m.Delete("/{identifier}", reqToken(), bind(api.DeleteLabelsOption{}), repo.DeleteIssueLabel)
+								Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.IssueLabelsOption{}), repo.AddIssueLabels).
+								Put(reqToken(), reqMutableIssuesOrPulls(), bind(api.IssueLabelsOption{}), repo.ReplaceIssueLabels).
+								Delete(reqToken(), reqMutableIssuesOrPulls(), bind(api.DeleteLabelsOption{}), repo.ClearIssueLabels)
+							m.Delete("/{identifier}", reqToken(), reqMutableIssuesOrPulls(), bind(api.DeleteLabelsOption{}), repo.DeleteIssueLabel)
 						})
 						m.Group("/times", func() {
 							m.Combo("").
 								Get(repo.ListTrackedTimes).
-								Post(bind(api.AddTimeOption{}), repo.AddTime).
-								Delete(repo.ResetIssueTime)
-							m.Delete("/{id}", repo.DeleteTime)
+								Post(reqMutableIssuesOrPulls(), bind(api.AddTimeOption{}), repo.AddTime).
+								Delete(reqMutableIssuesOrPulls(), repo.ResetIssueTime)
+							m.Delete("/{id}", reqMutableIssuesOrPulls(), repo.DeleteTime)
 						}, reqToken())
-						m.Combo("/deadline").Post(reqToken(), bind(api.EditDeadlineOption{}), repo.UpdateIssueDeadline)
+						m.Combo("/deadline").Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditDeadlineOption{}), repo.UpdateIssueDeadline)
 						m.Group("/stopwatch", func() {
-							m.Post("/start", repo.StartIssueStopwatch)
-							m.Post("/stop", repo.StopIssueStopwatch)
-							m.Delete("/delete", repo.DeleteIssueStopwatch)
+							m.Post("/start", reqMutableIssuesOrPulls(), repo.StartIssueStopwatch)
+							m.Post("/stop", reqMutableIssuesOrPulls(), repo.StopIssueStopwatch)
+							m.Delete("/delete", reqMutableIssuesOrPulls(), repo.DeleteIssueStopwatch)
 						}, reqToken())
 						m.Group("/subscriptions", func() {
 							m.Get("", repo.GetIssueSubscribers)
@@ -1161,30 +1175,30 @@ func Routes() *web.Route {
 						})
 						m.Combo("/reactions").
 							Get(repo.GetIssueReactions).
-							Post(reqToken(), bind(api.EditReactionOption{}), repo.PostIssueReaction).
-							Delete(reqToken(), bind(api.EditReactionOption{}), repo.DeleteIssueReaction)
+							Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditReactionOption{}), repo.PostIssueReaction).
+							Delete(reqToken(), reqMutableIssuesOrPulls(), bind(api.EditReactionOption{}), repo.DeleteIssueReaction)
 						m.Group("/assets", func() {
 							m.Combo("").
 								Get(repo.ListIssueAttachments).
-								Post(reqToken(), mustNotBeArchived(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.CreateIssueAttachment)
+								Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), context.EnforceQuotaAPI(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.CreateIssueAttachment)
 							m.Combo("/{attachment_id}").
 								Get(repo.GetIssueAttachment).
-								Patch(reqToken(), mustNotBeArchived(), bind(api.EditAttachmentOptions{}), repo.EditIssueAttachment).
-								Delete(reqToken(), mustNotBeArchived(), repo.DeleteIssueAttachment)
+								Patch(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.EditAttachmentOptions{}), repo.EditIssueAttachment).
+								Delete(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), repo.DeleteIssueAttachment)
 						}, mustEnableAttachments())
 						m.Combo("/dependencies").
 							Get(repo.GetIssueDependencies).
-							Post(reqToken(), mustNotBeArchived(), bind(api.IssueMeta{}), repo.CreateIssueDependency).
-							Delete(reqToken(), mustNotBeArchived(), bind(api.IssueMeta{}), repo.RemoveIssueDependency)
+							Post(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.IssueMeta{}), repo.CreateIssueDependency).
+							Delete(reqToken(), mustNotBeArchived(), reqMutableIssuesOrPulls(), bind(api.IssueMeta{}), repo.RemoveIssueDependency)
 						m.Combo("/blocks").
 							Get(repo.GetIssueBlocks).
-							Post(reqToken(), bind(api.IssueMeta{}), repo.CreateIssueBlocking).
-							Delete(reqToken(), bind(api.IssueMeta{}), repo.RemoveIssueBlocking)
+							Post(reqToken(), reqMutableIssuesOrPulls(), bind(api.IssueMeta{}), repo.CreateIssueBlocking).
+							Delete(reqToken(), reqMutableIssuesOrPulls(), bind(api.IssueMeta{}), repo.RemoveIssueBlocking)
 						m.Group("/pin", func() {
 							m.Combo("").
-								Post(reqToken(), reqAdmin(), repo.PinIssue).
-								Delete(reqToken(), reqAdmin(), repo.UnpinIssue)
-							m.Patch("/{position}", reqToken(), reqAdmin(), repo.MoveIssuePin)
+								Post(reqToken(), reqMutableIssuesOrPulls(), reqAdmin(), repo.PinIssue).
+								Delete(reqToken(), reqMutableIssuesOrPulls(), reqAdmin(), repo.UnpinIssue)
+							m.Patch("/{position}", reqToken(), reqMutableIssuesOrPulls(), reqAdmin(), repo.MoveIssuePin)
 						})
 					}, mustEnableLocalIssuesIfIsIssue())
 				}, mustEnableIssuesOrPulls())

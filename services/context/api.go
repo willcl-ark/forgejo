@@ -227,6 +227,7 @@ func (ctx *APIContext) GetPermission() *access_model.Permission {
 
 func (ctx *APIContext) SetPermission(permission *access_model.Permission) {
 	ctx.Repo.Permission = *permission
+	ctx.Repo.limitGitHubMetadataMirrorPermissions()
 }
 
 func (ctx *APIContext) GetIsSigned() bool {

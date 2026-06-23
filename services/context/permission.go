@@ -55,6 +55,17 @@ func RequireRepoWriterOr(unitTypes ...unit.Type) func(ctx *Context) {
 	}
 }
 
+// RequireMutableIssuesOrPulls blocks issue and pull request metadata writes on
+// metadata mirrors.
+func RequireMutableIssuesOrPulls() func(ctx *Context) {
+	return func(ctx *Context) {
+		if ctx.Repo.IsGitHubMetadataMirror {
+			ctx.Error(http.StatusForbidden, "GitHubMetadataMirrorReadOnly")
+			return
+		}
+	}
+}
+
 // RequireRepoReader returns a middleware for requiring repository read to the specify unitType
 func RequireRepoReader(unitType unit.Type) func(ctx *Context) {
 	return func(ctx *Context) {

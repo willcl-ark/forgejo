@@ -1349,7 +1349,7 @@ func registerRoutes(m *web.Route) {
 		m.Get("/compare", repo.MustBeNotEmpty, reqRepoCodeReader, repo.SetEditorconfigIfExists, ignSignIn, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.CompareDiff)
 		m.Combo("/compare/*", repo.MustBeNotEmpty, reqRepoCodeReader, repo.SetEditorconfigIfExists).
 			Get(repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.CompareDiff).
-			Post(reqSignIn, context.RepoMustNotBeArchived(), reqRepoPullsReader, repo.MustAllowPulls, web.Bind(forms.CreateIssueForm{}), repo.SetWhitespaceBehavior, repo.CompareAndPullRequestPost)
+			Post(reqSignIn, context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls(), reqRepoPullsReader, repo.MustAllowPulls, web.Bind(forms.CreateIssueForm{}), repo.SetWhitespaceBehavior, repo.CompareAndPullRequestPost)
 		m.Group("/{type:^(issues|pulls)$}", func() {
 			m.Group("/{index}", func() {
 				m.Get("/info", repo.GetIssueInfo)
@@ -1368,7 +1368,7 @@ func registerRoutes(m *web.Route) {
 		m.Group("/issues", func() {
 			m.Group("/new", func() {
 				m.Combo("", context.EnsureOrg()).Get(context.RepoRef(), repo.NewIssue).
-					Post(web.Bind(forms.CreateIssueForm{}), repo.NewIssuePost)
+					Post(context.RequireMutableIssuesOrPulls(), web.Bind(forms.CreateIssueForm{}), repo.NewIssuePost)
 				m.Get("/choose", context.RepoRef(), repo.NewIssueChooseTemplate)
 			})
 			m.Get("/search", repo.ListIssues)
@@ -1402,34 +1402,34 @@ func registerRoutes(m *web.Route) {
 				m.Post("/lock", reqRepoIssuesOrPullsWriter, web.Bind(forms.IssueLockForm{}), repo.LockIssue)
 				m.Post("/unlock", reqRepoIssuesOrPullsWriter, repo.UnlockIssue)
 				m.Post("/delete", reqRepoAdmin, repo.DeleteIssue)
-			}, context.RepoMustNotBeArchived())
+			}, context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls())
 			m.Group("/{index}", func() {
 				m.Get("/attachments", repo.GetIssueAttachments)
 				m.Get("/attachments/{uuid}", repo.GetAttachment)
 			})
 			m.Group("/{index}", func() {
 				m.Post("/content-history/soft-delete", repo.SoftDeleteContentHistory)
-			})
+			}, context.RequireMutableIssuesOrPulls())
 
 			m.Post("/labels", reqRepoIssuesOrPullsWriter, repo.UpdateIssueLabel)
 			m.Post("/milestone", reqRepoIssuesOrPullsWriter, repo.UpdateIssueMilestone)
 			m.Post("/projects", reqRepoIssuesOrPullsWriter, context.EnsureOrg(), reqRepoOrOwnerProjectReader, repo.UpdateIssueProject)
 			m.Post("/assignee", reqRepoIssuesOrPullsWriter, repo.UpdateIssueAssignee)
-			m.Post("/request_review", reqRepoIssuesOrPullsReader, repo.UpdatePullReviewRequest)
-			m.Post("/dismiss_review", reqRepoAdmin, web.Bind(forms.DismissReviewForm{}), repo.DismissReview)
+			m.Post("/request_review", context.RequireMutableIssuesOrPulls(), reqRepoIssuesOrPullsReader, repo.UpdatePullReviewRequest)
+			m.Post("/dismiss_review", context.RequireMutableIssuesOrPulls(), reqRepoAdmin, web.Bind(forms.DismissReviewForm{}), repo.DismissReview)
 			m.Post("/status", reqRepoIssuesOrPullsWriter, repo.UpdateIssueStatus)
-			m.Post("/delete", reqRepoAdmin, repo.BatchDeleteIssues)
-			m.Post("/resolve_conversation", reqRepoIssuesOrPullsReader, repo.SetShowOutdatedComments, repo.UpdateResolveConversation)
-			m.Post("/attachments", context.EnforceQuotaWeb(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.UploadIssueAttachment)
-			m.Post("/attachments/remove", repo.DeleteAttachment)
-			m.Delete("/unpin/{index}", reqRepoAdmin, repo.IssueUnpin)
-			m.Post("/move_pin", reqRepoAdmin, repo.IssuePinMove)
+			m.Post("/delete", context.RequireMutableIssuesOrPulls(), reqRepoAdmin, repo.BatchDeleteIssues)
+			m.Post("/resolve_conversation", context.RequireMutableIssuesOrPulls(), reqRepoIssuesOrPullsReader, repo.SetShowOutdatedComments, repo.UpdateResolveConversation)
+			m.Post("/attachments", context.RequireMutableIssuesOrPulls(), context.EnforceQuotaWeb(quota_model.LimitSubjectSizeAssetsAttachmentsIssues, context.QuotaTargetRepo), repo.UploadIssueAttachment)
+			m.Post("/attachments/remove", context.RequireMutableIssuesOrPulls(), repo.DeleteAttachment)
+			m.Delete("/unpin/{index}", context.RequireMutableIssuesOrPulls(), reqRepoAdmin, repo.IssueUnpin)
+			m.Post("/move_pin", context.RequireMutableIssuesOrPulls(), reqRepoAdmin, repo.IssuePinMove)
 		}, context.RepoMustNotBeArchived())
 		m.Group("/comments/{id}", func() {
 			m.Post("", repo.UpdateCommentContent)
 			m.Post("/delete", repo.DeleteComment)
 			m.Post("/reactions/{action}", web.Bind(forms.ReactionForm{}), repo.ChangeCommentReaction)
-		}, context.RepoMustNotBeArchived())
+		}, context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls())
 		m.Group("/comments/{id}", func() {
 			m.Get("/attachments", repo.GetCommentAttachments)
 		})
@@ -1450,7 +1450,7 @@ func registerRoutes(m *web.Route) {
 		}, context.RepoMustNotBeArchived(), reqRepoIssuesOrPullsWriter, context.RepoRef())
 		m.Group("/pull", func() {
 			m.Post("/{index}/target_branch", repo.UpdatePullRequestTarget)
-		}, context.RepoMustNotBeArchived())
+		}, context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls())
 
 		m.Group("", func() {
 			m.Group("", func() {
@@ -1712,26 +1712,26 @@ func registerRoutes(m *web.Route) {
 				m.Get("/list", context.RepoRef(), repo.GetPullCommits)
 				m.Group("/{sha:[a-f0-9]{4,64}}", func() {
 					m.Get("", context.RepoRef(), repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.SetShowOutdatedComments, repo.ViewPullFilesForSingleCommit)
-					m.Post("/reviews/submit", context.RepoMustNotBeArchived(), web.Bind(forms.SubmitReviewForm{}), repo.SubmitReview)
+					m.Post("/reviews/submit", context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls(), web.Bind(forms.SubmitReviewForm{}), repo.SubmitReview)
 				})
 				m.Group("/{sha:([a-f0-9]{4,64})$}/notes", func() {
 					m.Post("", context.RepoMustNotBeArchived(), web.Bind(forms.CommitNotesForm{}), repo.SetCommitNotesPullRequest)
 					m.Post("/remove", context.RepoMustNotBeArchived(), repo.RemoveCommitNotesPullRequest)
 				}, reqSignIn, reqRepoCodeWriter)
 			})
-			m.Post("/merge", context.RepoMustNotBeArchived(), web.Bind(forms.MergePullRequestForm{}), context.EnforceQuotaWeb(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.MergePullRequest)
-			m.Post("/cancel_auto_merge", context.RepoMustNotBeArchived(), repo.CancelAutoMergePullRequest)
-			m.Post("/update", repo.UpdatePullRequest)
-			m.Post("/set_allow_maintainer_edit", web.Bind(forms.UpdateAllowEditsForm{}), repo.SetAllowEdits)
-			m.Post("/cleanup", context.RepoMustNotBeArchived(), context.RepoRef(), repo.CleanUpPullRequest)
+			m.Post("/merge", context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls(), web.Bind(forms.MergePullRequestForm{}), context.EnforceQuotaWeb(quota_model.LimitSubjectSizeGitAll, context.QuotaTargetRepo), repo.MergePullRequest)
+			m.Post("/cancel_auto_merge", context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls(), repo.CancelAutoMergePullRequest)
+			m.Post("/update", context.RequireMutableIssuesOrPulls(), repo.UpdatePullRequest)
+			m.Post("/set_allow_maintainer_edit", context.RequireMutableIssuesOrPulls(), web.Bind(forms.UpdateAllowEditsForm{}), repo.SetAllowEdits)
+			m.Post("/cleanup", context.RepoMustNotBeArchived(), context.RequireMutableIssuesOrPulls(), context.RepoRef(), repo.CleanUpPullRequest)
 			m.Group("/files", func() {
 				m.Get("", context.RepoRef(), repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.SetShowOutdatedComments, repo.ViewPullFilesForAllCommitsOfPr)
 				m.Get("/{sha:[a-f0-9]{4,64}}", context.RepoRef(), repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.SetShowOutdatedComments, repo.ViewPullFilesStartingFromCommit)
 				m.Get("/{shaFrom:[a-f0-9]{4,64}}..{shaTo:[a-f0-9]{4,64}}", context.RepoRef(), repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.SetShowOutdatedComments, repo.ViewPullFilesForRange)
 				m.Group("/reviews", func() {
 					m.Get("/new_comment", repo.RenderNewCodeCommentForm)
-					m.Post("/comments", web.Bind(forms.CodeCommentForm{}), repo.SetShowOutdatedComments, repo.CreateCodeComment)
-					m.Post("/submit", web.Bind(forms.SubmitReviewForm{}), repo.SubmitReview)
+					m.Post("/comments", context.RequireMutableIssuesOrPulls(), web.Bind(forms.CodeCommentForm{}), repo.SetShowOutdatedComments, repo.CreateCodeComment)
+					m.Post("/submit", context.RequireMutableIssuesOrPulls(), web.Bind(forms.SubmitReviewForm{}), repo.SubmitReview)
 				}, context.RepoMustNotBeArchived())
 			})
 		}, repo.MustAllowPulls)

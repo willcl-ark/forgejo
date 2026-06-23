@@ -21,6 +21,7 @@ import (
 	git_model "forgejo.org/models/git"
 	issues_model "forgejo.org/models/issues"
 	packages_model "forgejo.org/models/packages"
+	perm_model "forgejo.org/models/perm"
 	access_model "forgejo.org/models/perm/access"
 	repo_model "forgejo.org/models/repo"
 	unit_model "forgejo.org/models/unit"
@@ -52,23 +53,24 @@ type PullRequest struct {
 // Repository contains information to operate a repository
 type Repository struct {
 	access_model.Permission
-	IsWatching   bool
-	IsViewBranch bool
-	IsViewTag    bool
-	IsViewCommit bool
-	Repository   *repo_model.Repository
-	Owner        *user_model.User
-	Commit       *git.Commit
-	Tag          *git.Tag
-	GitRepo      *git.Repository
-	RefName      string
-	BranchName   string
-	TagName      string
-	TreePath     string
-	CommitID     string
-	RepoLink     string
-	CloneLink    repo_model.CloneLink
-	CommitsCount int64
+	IsWatching             bool
+	IsViewBranch           bool
+	IsViewTag              bool
+	IsViewCommit           bool
+	Repository             *repo_model.Repository
+	IsGitHubMetadataMirror bool
+	Owner                  *user_model.User
+	Commit                 *git.Commit
+	Tag                    *git.Tag
+	GitRepo                *git.Repository
+	RefName                string
+	BranchName             string
+	TagName                string
+	TreePath               string
+	CommitID               string
+	RepoLink               string
+	CloneLink              repo_model.CloneLink
+	CommitsCount           int64
 
 	PullRequest *PullRequest
 }
@@ -76,6 +78,39 @@ type Repository struct {
 // CanWriteToBranch checks if the branch is writable by the user
 func (r *Repository) CanWriteToBranch(ctx context.Context, user *user_model.User, branch string) bool {
 	return issues_model.CanMaintainerWriteToBranch(ctx, r.Permission, branch, user)
+}
+
+// CanWrite returns true if user can write to this unit.
+func (r *Repository) CanWrite(unitType unit_model.Type) bool {
+	if r.IsGitHubMetadataMirror && (unitType == unit_model.TypeIssues || unitType == unit_model.TypePullRequests) {
+		return false
+	}
+	return r.Permission.CanWrite(unitType)
+}
+
+// CanWriteIssuesOrPulls returns true if user can write to issues or pull requests.
+func (r *Repository) CanWriteIssuesOrPulls(isPull bool) bool {
+	if r.IsGitHubMetadataMirror {
+		return false
+	}
+	return r.Permission.CanWriteIssuesOrPulls(isPull)
+}
+
+func (r *Repository) limitGitHubMetadataMirrorPermissions() {
+	if !r.IsGitHubMetadataMirror {
+		return
+	}
+	if r.Permission.UnitsMode == nil {
+		r.Permission.UnitsMode = make(map[unit_model.Type]perm_model.AccessMode, len(r.Permission.Units))
+		for _, repoUnit := range r.Permission.Units {
+			r.Permission.UnitsMode[repoUnit.Type] = r.Permission.AccessMode
+		}
+	}
+	for _, unitType := range []unit_model.Type{unit_model.TypeIssues, unit_model.TypePullRequests} {
+		if r.Permission.UnitsMode[unitType] > perm_model.AccessModeRead {
+			r.Permission.UnitsMode[unitType] = perm_model.AccessModeRead
+		}
+	}
 }
 
 // CanEnableEditor returns true if repository is editable and user has proper access level.
@@ -425,6 +460,15 @@ func repoAssignment(ctx *Context, repo *repo_model.Repository) {
 			return
 		}
 	}
+
+	isGitHubMetadataMirror, err := repo_model.IsGitHubMetadataMirror(ctx, repo.ID)
+	if err != nil {
+		ctx.ServerError("IsGitHubMetadataMirror", err)
+		return
+	}
+	ctx.Repo.IsGitHubMetadataMirror = isGitHubMetadataMirror
+	ctx.Repo.limitGitHubMetadataMirrorPermissions()
+	ctx.Data["IsGitHubMetadataMirror"] = isGitHubMetadataMirror
 
 	ctx.Repo.Repository = repo
 	ctx.Data["RepoName"] = ctx.Repo.Repository.Name
