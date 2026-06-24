@@ -26,7 +26,7 @@ import (
 	"forgejo.org/services/migrations"
 )
 
-var githubAssetURLPattern = regexp.MustCompile(`https://(?:user-images\.githubusercontent\.com|private-user-images\.githubusercontent\.com|raw\.githubusercontent\.com|github\.com/[^\s\]\[()"'<>]+/(?:assets|user-attachments/assets)/[^\s\]\[()"'<>]+|github-production-user-asset-[A-Za-z0-9-]+\.s3\.amazonaws\.com)[^\s\]\[()"'<>]*`)
+var githubAssetURLPattern = regexp.MustCompile(`https://(?:user-images\.githubusercontent\.com|private-user-images\.githubusercontent\.com|github\.com/[^\s\]\[()"'<>]+/(?:assets|user-attachments/assets)/[^\s\]\[()"'<>]+|github-production-user-asset-[A-Za-z0-9-]+\.s3\.amazonaws\.com)[^\s\]\[()"'<>]*`)
 
 var imageExtensions = map[string]bool{
 	".apng": true,
@@ -329,8 +329,6 @@ func githubAssetNameParts(rawURL string) []string {
 		return append([]string{"user-images"}, parts...)
 	case u.Host == "private-user-images.githubusercontent.com":
 		return append([]string{"private-user-images"}, parts...)
-	case u.Host == "raw.githubusercontent.com":
-		return append([]string{"raw"}, parts...)
 	case u.Host == "github.com":
 		for i, part := range parts {
 			if part == "user-attachments" {

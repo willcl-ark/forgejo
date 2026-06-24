@@ -51,7 +51,7 @@ func TestCanonicalGitHubAssetURL(t *testing.T) {
 }
 
 func TestGitHubAssetURLPattern(t *testing.T) {
-	content := `![old](https://user-images.githubusercontent.com/1/2.png) ![new](https://github.com/user-attachments/assets/abc123) [non-image](https://example.com/no.png)`
+	content := `![old](https://user-images.githubusercontent.com/1/2.png) ![new](https://github.com/user-attachments/assets/abc123) [raw](https://raw.githubusercontent.com/bitcoin/bitcoin/master/doc/README.md) [non-image](https://example.com/no.png)`
 	matches := githubAssetURLPattern.FindAllString(content, -1)
 	assert.Equal(t, []string{
 		"https://user-images.githubusercontent.com/1/2.png",

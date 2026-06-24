@@ -39,7 +39,6 @@ URL_RE = re.compile(
     r"https://(?:"
     r"user-images\.githubusercontent\.com"
     r"|private-user-images\.githubusercontent\.com"
-    r"|raw\.githubusercontent\.com"
     r"|github\.com/[^\s\]\[()\"'<>]+/(?:assets|user-attachments/assets)/[^\s\]\[()\"'<>]+"
     r"|github-production-user-asset-[A-Za-z0-9-]+\.s3\.amazonaws\.com"
     r")[^\s\]\[()\"'<>]*"
@@ -506,8 +505,6 @@ def attachment_name(canonical_url: str, final_url: str, content_type: str) -> st
         parts = ["user-images", *path_parts]
     elif host == "private-user-images.githubusercontent.com":
         parts = ["private-user-images", *path_parts]
-    elif host == "raw.githubusercontent.com":
-        parts = ["raw", *path_parts]
     elif host == "github.com":
         if "user-attachments" in path_parts:
             idx = path_parts.index("user-attachments")
