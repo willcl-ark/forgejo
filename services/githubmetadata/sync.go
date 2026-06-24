@@ -575,12 +575,24 @@ func (imp *importer) upsertIssue(ctx context.Context, source githubIssue) (*issu
 	if err := issues_model.InsertIssues(ctx, issue); err != nil {
 		return nil, err
 	}
+	if err := imp.localizeIssueContent(ctx, issue, source.Body); err != nil {
+		return nil, err
+	}
 	return issue, recordSourceMap(ctx, imp.repo.ID, sourceKindIssue, source.ID, issue.ID, source.Number)
 }
 
 func (imp *importer) updateIssue(ctx context.Context, issue *issues_model.Issue, source githubIssue, labels []*issues_model.Label) error {
+	body, err := imp.localizeContentAssets(ctx, source.Body, assetTarget{
+		RepoID:      imp.repo.ID,
+		IssueID:     issue.ID,
+		UploaderID:  issue.PosterID,
+		CreatedUnix: int64(issue.CreatedUnix),
+	})
+	if err != nil {
+		return err
+	}
 	issue.Title = util.TruncateRunes(source.Title, 255)
-	issue.Content = source.Body
+	issue.Content = body
 	issue.IsClosed = source.State == "closed"
 	issue.IsLocked = source.Locked
 	issue.UpdatedUnix = timeutil.TimeStamp(source.UpdatedAt.Unix())
@@ -588,7 +600,7 @@ func (imp *importer) updateIssue(ctx context.Context, issue *issues_model.Issue,
 	if source.ClosedAt != nil {
 		issue.ClosedUnix = timeutil.TimeStamp(source.ClosedAt.Unix())
 	}
-	_, err := db.GetEngine(ctx).ID(issue.ID).NoAutoTime().
+	_, err = db.GetEngine(ctx).ID(issue.ID).NoAutoTime().
 		Cols("name", "content", "is_closed", "is_locked", "updated_unix", "closed_unix").
 		Update(issue)
 	if err != nil {
@@ -661,17 +673,29 @@ func (imp *importer) upsertPull(ctx context.Context, source githubPull) (*issues
 	if err := issues_model.InsertPullRequests(ctx, pr); err != nil {
 		return nil, nil, err
 	}
+	if err := imp.localizeIssueContent(ctx, issue, source.Body); err != nil {
+		return nil, nil, err
+	}
 	return issue, pr, recordSourceMap(ctx, imp.repo.ID, sourceKindPull, source.ID, pr.ID, source.Number)
 }
 
 func (imp *importer) updatePull(ctx context.Context, pr *issues_model.PullRequest, source githubPull, labels []*issues_model.Label) error {
 	issue := pr.Issue
+	body, err := imp.localizeContentAssets(ctx, source.Body, assetTarget{
+		RepoID:      imp.repo.ID,
+		IssueID:     issue.ID,
+		UploaderID:  issue.PosterID,
+		CreatedUnix: int64(issue.CreatedUnix),
+	})
+	if err != nil {
+		return err
+	}
 	title := source.Title
 	if source.Draft && !issues_model.HasWorkInProgressPrefix(title) {
 		title = fmt.Sprintf("%s %s", setting.Repository.PullRequest.WorkInProgressPrefixes[0], title)
 	}
 	issue.Title = util.TruncateRunes(title, 255)
-	issue.Content = source.Body
+	issue.Content = body
 	issue.IsClosed = source.State == "closed"
 	issue.IsLocked = source.Locked
 	issue.UpdatedUnix = timeutil.TimeStamp(source.UpdatedAt.Unix())
@@ -783,6 +807,9 @@ func (imp *importer) importIssueComments(ctx context.Context, issue *issues_mode
 		return err
 	}
 	for i, comment := range comments {
+		if err := imp.localizeCommentContent(ctx, comment); err != nil {
+			return err
+		}
 		if err := recordSourceMap(ctx, imp.repo.ID, sourceKindIssueComment, sourceIDs[i], comment.ID, issue.Index); err != nil {
 			return err
 		}
@@ -868,10 +895,16 @@ func (imp *importer) importReview(ctx context.Context, issue *issues_model.Issue
 	if err := issues_model.InsertReviews(ctx, []*issues_model.Review{review}); err != nil {
 		return err
 	}
+	if err := imp.localizeReviewContent(ctx, issue, review); err != nil {
+		return err
+	}
 	if err := recordSourceMap(ctx, imp.repo.ID, sourceKindReview, event.ID, review.ID, issue.Index); err != nil {
 		return err
 	}
 	for i, comment := range review.Comments {
+		if err := imp.localizeCommentContent(ctx, comment); err != nil {
+			return err
+		}
 		if err := recordSourceMap(ctx, imp.repo.ID, sourceKindReviewComment, commentSourceIDs[i], comment.ID, issue.Index); err != nil {
 			return err
 		}
@@ -911,10 +944,16 @@ func (imp *importer) importSyntheticReview(ctx context.Context, issue *issues_mo
 	if err := issues_model.InsertReviews(ctx, []*issues_model.Review{review}); err != nil {
 		return err
 	}
+	if err := imp.localizeReviewContent(ctx, issue, review); err != nil {
+		return err
+	}
 	if err := recordSourceMap(ctx, imp.repo.ID, sourceKindReview, reviewID, review.ID, pr.Index); err != nil {
 		return err
 	}
 	for i, comment := range review.Comments {
+		if err := imp.localizeCommentContent(ctx, comment); err != nil {
+			return err
+		}
 		if err := recordSourceMap(ctx, imp.repo.ID, sourceKindReviewComment, commentSourceIDs[i], comment.ID, issue.Index); err != nil {
 			return err
 		}
@@ -941,6 +980,9 @@ func (imp *importer) importReviewComments(ctx context.Context, issue *issues_mod
 		return err
 	}
 	for i, comment := range newComments {
+		if err := imp.localizeCommentContent(ctx, comment); err != nil {
+			return err
+		}
 		if err := recordSourceMap(ctx, imp.repo.ID, sourceKindReviewComment, sourceIDs[i], comment.ID, issue.Index); err != nil {
 			return err
 		}
